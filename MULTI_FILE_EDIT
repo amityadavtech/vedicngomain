@@ -1,0 +1,171 @@
+// app/admin/dashboard/page.tsx
+import { useState } from "react";
+import { ToastContainer, toast } from 'react-toastify';
+import { FileText } from 'lucide-react';
+import { supabase } from "@/lib/supabase";
+import { useTranslation } from "react-i18next";
+import Input from "@/components/input";
+import { maybeSingle } from "@/utils/fetch";
+
+const DashboardPage = () => {
+  const { t } = useTranslation();
+  const [eventName, setEventName] = useState("");
+  const [driveLink, setDriveLink] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [editingAnnouncement, setEditingAnnouncement] = useState(false);
+  const [announcement, setAnnouncement] = useState(null);
+
+  const fetchData = async () => {
+    const { data } = await maybeSingle("event_announcements", "id", 1);
+    setAnnouncement(data);
+    setEventName(data?.event_name ?? "");
+    setDriveLink(data?.pdf_link ?? "");
+  };
+
+  const saveAnnouncement = async () => {
+    if (!eventName.trim() || !driveLink.trim()) {
+      toast({ title: "त्रुटि!", description: "कृपया कार्यक्रम नाम और Drive लिंक भरें।", variant: "destructive" });
+      return;
+    }
+    setSaving(true);
+    try {
+      if (announcement?.id) {
+        const { error } = await supabase
+          .from("event_announcements")
+          .update({ event_name: eventName.trim(), pdf_link: driveLink.trim(), pdf_path: null, updated_at: new Date().toISOString() })
+          .eq("id", announcement.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from("event_announcements")
+          .insert([{ event_name: eventName.trim(), pdf_link: driveLink.trim(), pdf_path: null }]);
+        if (error) throw error;
+      }
+      toast({ title: "सफल!", description: t("admin.announce.updated") });
+      setEditingAnnouncement(false);
+      await fetchData();
+    } catch (e) {
+      const msg = (typeof e === "object" && e && (e as any).message) ? (e as any).message : "घोषणा सहेजने में समस्या हुई।";
+      toast({ title: "त्रुटि!", description: msg, variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const currentPdfUrl = "https://example.com/pdf"; // Assume this is computed somewhere
+  const driveUrl = announcement?.pdf_link?.trim() || undefined;
+  const currentLink = driveUrl || (currentPdfUrl ? `${currentPdfUrl}?download=1` : undefined);
+
+  return (
+    <div>
+      {editingAnnouncement ? (
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">कार्यक्रम नाम</label>
+          <Input value={eventName} onChange={(e) => setEventName(e.target.value)} placeholder="कार्यक्रम नाम" />
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Google Drive लिंक</label>
+            <Input value={driveLink} onChange={(e) => setDriveLink(e.target.value)} placeholder="https://drive.google.com/..." />
+            <p className="text-xs text-gray-500 mt-1">कृपया सार्वजनिक रूप से एक्सेसिबल Drive लिंक प्रदान करें।</p>
+          </div>
+          <button onClick={saveAnnouncement} disabled={saving}>
+            {saving ? "सहेज रहा है..." : "सहेजें"}
+          </button>
+        </div>
+      ) : (
+        <div>
+          <h2>{announcement?.event_name}</h2>
+          {currentLink && (
+            <a href={currentLink} target="_blank" rel="noopener noreferrer">
+              लिंक देखें/डाउनलोड करें
+            </a>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// components/announcement-section.tsx
+import { useState } from "react";
+import { supabase } from "@/lib/supabase";
+import { getPublicUrl } from "@/utils/storage";
+import { useTranslation } from "react-i18next";
+
+const AnnouncementSection = () => {
+  const { t } = useTranslation();
+  const [announcement, setAnnouncement] = useState(null);
+
+  const fetchData = async () => {
+    const { data } = await supabase.from("event_announcements").select("*").single();
+    setAnnouncement(data);
+  };
+
+  const driveUrl = announcement?.pdf_link?.trim() || undefined;
+  const publicUrl = getPublicUrl("announcements", announcement?.pdf_path);
+  const downloadUrl = driveUrl || (publicUrl ? `${publicUrl}` : undefined);
+
+  return (
+    <div>
+      <h2>{announcement?.event_name}</h2>
+      {downloadUrl && (
+        <a href={downloadUrl} target="_blank" rel="noopener noreferrer">
+          डाउनलोड करें
+        </a>
+      )}
+    </div>
+  );
+};
+
+// app/page.tsx
+import AcademySection from "@/components/academy-section";
+import AnnouncementSection from "@/components/announcement-section";
+
+const HomePage = () => {
+  return (
+    <div>
+      <AcademySection />
+      <AnnouncementSection />
+    </div>
+  );
+};
+
+// components/footer.tsx
+import { useTranslation } from "react-i18next";
+
+const Footer = () => {
+  const { t } = useTranslation();
+
+  return (
+    <footer className="bg-gray-800 text-white p-4">
+      <div className="flex justify-between">
+        <div className="flex items-center">
+          <span className="mr-2">© 2023</span>
+          <a href="/terms" className="text-gray-400 hover:text-white text-sm transition-colors mr-2">
+            {t("footer.terms")}
+          </a>
+          <a href="https://www.pixelsbeing.site" target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-white text-sm transition-colors">
+            Designed and Developed by PixelsBeing
+          </a>
+        </div>
+      </div>
+    </footer>
+  );
+};
+
+// i18n/translations.ts
+export const translations = {
+  hi: {
+    "academy.title": "अकादमी",
+    "academy.sub": "वैदिक शिक्षा अकादमी में आपका स्वागत है। यहाँ वैदिक ज्ञान, योग, संस्कृत और धर्मग्रंथों का अध्ययन कराया जाता है।",
+    "academy.cta": "अकादमी देखें",
+    "academy.page.title": "अकादमी",
+    "academy.page.desc": "हमारी वैदिक शिक्षा अकादमी का उद्देश्य परम्परागत ज्ञान को आधुनिक पद्धतियों के साथ प्रस्तुत करना है। अधिक जानकारी के लिए नीचे देखें।",
+  },
+  sa: {
+    "academy.title": "अकादमी",
+    "academy.sub": "वैदिक-शिक्षा-अकादम्यां स्वागतम्। अत्र वैदिकज्ञानं योगः संस्कृतं धर्मग्रन्थाः च अध्याप्यन्ते।",
+    "academy.cta": "अकादमी पश्यन्तु",
+    "academy.page.title": "अकादमी",
+    "academy.page.desc": "अस्माकं वैदिक-शिक्षा-अकादम्याः ध्येयम् परम्परां ज्ञानं आधुनिक-पद्धतिभिः सह प्रस्तोतुम्। अधिकं ज्ञातुं अधः पश्यन्तु।",
+  },
+};
